@@ -1,0 +1,161 @@
+<!--
+GenAI Document Assistant UI
+- Calls API Gateway -> QA Lambda
+- Uses doc_id generated from chunker/embedder
+- Displays grounded answers with source chunks
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Doc Assistant — Chatbot Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{--bg:#f7fafc;--card:#fff;--muted:#64748b;--accent:#0f766e;--pill:#eef2ff;--pillText:#3730a3}
+    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;background:var(--bg);color:#0f172a;padding:18px}
+    .container{max-width:920px;margin:0 auto}
+    h1{font-size:20px;margin:0 0 8px 0}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 8px 24px rgba(16,24,40,0.06);margin-bottom:16px}
+    label{display:block;font-weight:600;font-size:13px;margin-bottom:6px}
+    input[type=text], select, textarea{width:100%;padding:10px;border:1px solid #e6e9ef;border-radius:8px;font-size:14px}
+    button{background:var(--accent);color:white;padding:10px 14px;border-radius:8px;border:none;font-weight:600;cursor:pointer}
+    button:disabled{opacity:0.6;cursor:not-allowed}
+    .row{display:flex;gap:12px}
+    .small{font-size:13px;color:var(--muted)}
+    .sources a{display:inline-block;background:var(--pill);color:var(--pillText);padding:6px 10px;border-radius:999px;margin-right:8px;margin-bottom:8px;text-decoration:none;font-size:13px}
+    pre{background:#0f172a;color:#f8fafc;padding:12px;border-radius:8px;overflow:auto}
+    .meta{display:flex;gap:12px;align-items:center}
+    .logo{font-weight:700;color:var(--accent);margin-right:8px}
+    footer{font-size:13px;color:var(--muted);margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+      <div class="logo">Doc Assistant</div>
+      <div class="small">Chat with a PDF — recruiter-ready RAG demo</div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+        <div style="flex:1">
+          <label>API Base URL</label>
+          <input id="apiUrl" type="text" value="https://f83y0a79p3.execute-api.ap-south-1.amazonaws.com" />
+          <div class="small">Paste your API base URL (no trailing <code>/qa</code>) — already filled for you.</div>
+        </div>
+
+        <div style="width:200px">
+          <label>Mode</label>
+          <select id="mode">
+            <option value="auto">auto</option>
+            <option value="short">short</option>
+            <option value="medium" selected>medium</option>
+            <option value="long">long</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Document ID (doc_id)</label>
+      <input id="docId" type="text" placeholder="c39a7bb8300a582d5" />
+
+      <label style="margin-top:12px">Question</label>
+      <textarea id="question" rows="4" placeholder="Ask something about the uploaded document..."></textarea>
+
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button id="askBtn">Ask</button>
+        <div id="status" class="small">Ready</div>
+      </div>
+    </div>
+
+    <div id="outputArea"></div>
+
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Logs</h3>
+      <pre id="log" style="height:160px"></pre>
+    </div>
+
+    <footer>
+      Tip: Use <strong>doc_id</strong> values produced by your chunker/embedder. To allow uploads from UI later, I can add presigned-upload endpoints.
+    </footer>
+  </div>
+
+  <script>
+    const apiUrlInput = document.getElementById('apiUrl')
+    const modeSelect = document.getElementById('mode')
+    const docIdInput = document.getElementById('docId')
+    const questionInput = document.getElementById('question')
+    const askBtn = document.getElementById('askBtn')
+    const statusEl = document.getElementById('status')
+    const logEl = document.getElementById('log')
+    const outputArea = document.getElementById('outputArea')
+
+    function log(msg){
+      const t = new Date().toLocaleTimeString()
+      logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent
+    }
+
+    function showResult(json){
+      outputArea.innerHTML = `
+      <div class="card">
+        <h2 style="margin:0 0 8px 0">${escapeHtml(json.title || 'Document Answer')}</h2>
+        <div class="small" style="margin-bottom:12px">mode: ${escapeHtml(json.mode || '')} • doc_id: ${escapeHtml(json.doc_id || '')}</div>
+        <div style="white-space:pre-wrap;line-height:1.5">${escapeHtml(json.answer || '')}</div>
+        <div style="margin-top:12px" class="sources">
+          ${ (json.sources || []).map(s => `<a href="${escapeHtml(sUrl(s))}" target="_blank">${escapeHtml(shortKey(s))}</a>`).join('') }
+        </div>
+      </div>
+      `
+    }
+
+    function sUrl(key){
+      const bucket = 'meghana-doc-summarizer'
+      return `https://s3.console.aws.amazon.com/s3/object/${bucket}?region=ap-south-1&prefix=${encodeURIComponent(key)}`
+    }
+    function shortKey(k){
+      return k.split('/').slice(-1)[0]
+    }
+    function escapeHtml(s){
+      if(!s) return ''
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    }
+
+    askBtn.addEventListener('click', async () => {
+      const base = apiUrlInput.value.trim().replace(/\/+$/,'')
+      if(!base){ alert('Enter API URL'); return }
+      const url = base + '/qa'
+      const doc_id = docIdInput.value.trim()
+      const question = questionInput.value.trim()
+      const mode = modeSelect.value || 'auto'
+      if(!doc_id){ alert('Enter doc_id'); return }
+      if(!question){ alert('Enter question'); return }
+
+      askBtn.disabled = true
+      statusEl.textContent = 'Asking...'
+      log(`POST ${url} (doc_id=${doc_id})`)
+
+      try{
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ bucket: 'meghana-doc-summarizer', doc_id, question, mode, top_k:6 })
+        })
+        const json = await resp.json()
+        if(resp.ok && json.status === 'success'){
+          showResult(json)
+          log('Success: answer received')
+        } else {
+          log('Error from API: ' + JSON.stringify(json))
+          outputArea.innerHTML = `<div class="card"><strong>Error</strong><pre>${escapeHtml(JSON.stringify(json,null,2))}</pre></div>`
+        }
+      }catch(err){
+        log('Network/error: ' + err.toString())
+        outputArea.innerHTML = `<div class="card"><strong>Network Error</strong><pre>${escapeHtml(err.toString())}</pre></div>`
+      } finally {
+        askBtn.disabled = false
+        statusEl.textContent = 'Ready'
+      }
+    })
+  </script>
+</body>
+</html>
