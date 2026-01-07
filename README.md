@@ -65,3 +65,10 @@ genai-document-assistant/
 
 
 📌 Full architecture details are available in: 'architecture/architecture.md'
+
+## Why This Project Matters
+
+This project demonstrates how to build a production-style GenAI system using
+fully serverless AWS services. It focuses on cost optimization, scalability,
+and hallucination-safe Retrieval-Augmented Generation (RAG) design.
+
