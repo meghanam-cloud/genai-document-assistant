@@ -117,3 +117,6 @@ This separation ensures scalability, cost efficiency, and clean responsibility b
 ## Architecture Diagram
 
 Refer to the architecture.png diagram in the `architecture/` folder:
+
+## This architecture avoids always-on infrastructure and scales automatically based on document uploads and query traffic.
+
