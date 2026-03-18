@@ -4,17 +4,25 @@ A fully serverless **GenAI-powered document assistant** that allows users to upl
 automatically extract and summarize content, and ask natural-language questions using
 Retrieval-Augmented Generation (RAG).
 
+## Quick Architecture Flow
+User → API Gateway → Lambda (Q&A)  
+S3 → Lambda → Textract → Lambda → Bedrock → S3 (chunks + vectors)
 
 ## What This Project Does
-
 - Upload a PDF → text is extracted automatically
 - Document is summarized using Generative AI
 - Text is chunked and embedded into vectors
 - Users can ask questions and receive grounded answers
 - Answers include **source references** (no hallucinations)
+  
+## My Contributions
+- Designed end-to-end serverless architecture for document processing and Q&A  
+- Implemented asynchronous Textract workflow with polling mechanism  
+- Built RAG pipeline (chunking, embedding, retrieval, grounded answering)  
+- Implemented error handling and retry logic for reliability  
+- Used CloudWatch logs for debugging and system monitoring 
 
 ## Key Technologies
-
 - **Amazon S3** – Document storage & vector store
 - **AWS Lambda** – Serverless processing
 - **Amazon Textract** – OCR (async)
@@ -35,6 +43,12 @@ The system consists of two independent pipelines:
 - UI sends questions via API Gateway
 - Relevant chunks are retrieved using vector similarity
 - Claude answers strictly from retrieved context
+
+## Challenges & Learnings
+- Handling async Textract jobs required polling and state management  
+- Ensuring correct IAM permissions across Lambda and Textract  
+- Designing chunking strategy to preserve context  
+- Avoiding hallucinations using retrieval-based answering
 
 ## Repository Structure
 genai-document-assistant/
@@ -63,7 +77,11 @@ genai-document-assistant/
 │
 └── README.md
 📌 Full architecture details are available in: 'architecture/architecture.md'
-
+  
+## Monitoring & Debugging
+- Used CloudWatch logs to trace Lambda execution  
+- Debugged IAM permission issues and API failures  
+- Validated pipeline reliability through test scenarios 
 
 ## Demo Screenshots
 
